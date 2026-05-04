@@ -1,192 +1,1255 @@
-openapi: '3.0.0'
+openapi: 3.1.0
 info:
-  version: 1.0.0
-  title: Sample API
-  description: >
-    This is a sample OpenAPI file included with the starter kit.
+  title: Titlecard API
+  version: 0.1.0
+  description: |
+    REST API for the Titlecard platform.
 
-    Replace this entire file with your own OpenAPI specification that fully
-    describes your API, including your endpoints, schemas, authentication,
-    and error handling. Use this sample only as a structural reference, not
-    as a starting point for a production API definition.
-  license:
-    name: MIT
+    Generated from the Notion API reference (Engineering → API reference) and
+    its sub-pages: Health, Cards, Card blocks, vCard export, Handles, Profile,
+    Device tokens, Import, Smart links, Submissions, QR codes, Master key.
+
+    ## Authentication
+    Most endpoints accept either:
+      - **Bearer JWT** (`Authorization: Bearer <jwt>`) — Supabase session token,
+        required for user-context operations.
+      - **Master key** (`X-Titlecard-Key: <key>`) — server-to-server root
+        credential matched against `X_TITLECARD_KEY`. Bypasses ownership checks
+        on supported endpoints.
+
+    Some endpoints are JWT-only (profile, device tokens, smart-link PATCH).
+    `POST /v1/submissions` requires no authentication.
+
+    ## Rate limits
+      - Most authenticated endpoints: 60 req/min per client IP.
+      - `POST /v1/submissions`: 20 req / 15 min per client IP.
+
+    Rate-limit responses (`429`) include `X-RateLimit-Limit`,
+    `X-RateLimit-Remaining`, and `Retry-After` headers.
+
+    ## Errors
+    All error responses return `{ "error": "<message>" }`.
+
 servers:
-  - url: https://api.example.com/v1
+  - url: https://api.title.cards
+    description: Production
+
+tags:
+  - name: Health
+  - name: Cards
+  - name: Card blocks
+  - name: vCard
+  - name: Handles
+  - name: Profile
+  - name: Device tokens
+  - name: Import
+  - name: Smart links
+  - name: Submissions
+  - name: QR codes
+
+security:
+  - bearerAuth: []
+  - masterKey: []
+
 paths:
-  /projects:
+  /health:
     get:
-      summary: List all projects
-      operationId: listProjects
-      parameters:
-        - name: limit
-          in: query
-          description: How many items to return at one time (max 100)
-          required: false
-          schema:
-            type: integer
-            format: int32
+      tags: [Health]
+      summary: Health check
+      description: Uptime / load-balancer health check. No authentication.
+      security: []
       responses:
-        200:
-          description: An paged array of projects
-          headers:
-            x-next:
-              description: A link to the next page of responses
-              schema:
-                type: string
+        '200':
+          description: API is reachable.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Projects'
-        default:
-          description: unexpected error
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                required: [ok]
+
+  /v1/cards:
+    get:
+      tags: [Cards]
+      summary: List cards
+      description: |
+        List all cards owned by the authenticated user, including drafts
+        (`is_visible: false`). With master key, lists every non-deleted card
+        across all users.
+      responses:
+        '200':
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                type: object
+                properties:
+                  cards:
+                    type: array
+                    items: { $ref: '#/components/schemas/CardListItem' }
+                required: [cards]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     post:
-      summary: Create project
-      operationId: createProjects
-      responses:
-        201:
-          description: Null response
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /projects/{projectId}:
-    get:
-      summary: Get project info
-      operationId: showProjectById
-      parameters:
-        - name: projectId
-          in: path
-          required: true
-          description: The id of the project to retrieve
-          schema:
-            type: string
-      responses:
-        200:
-          description: Expected response to a valid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Projects'
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /documents:
-    get:
-      summary: List all documents
-      operationId: listDocuments
-      parameters:
-        - name: limit
-          in: query
-          description: How many items to return at one time (max 100)
-          required: false
-          schema:
-            type: integer
-            format: int32
-      responses:
-        200:
-          description: An paged array of documents
-          headers:
-            x-next:
-              description: A link to the next page of responses
-              schema:
-                type: string
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Documents'
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    post:
-      summary: Create document
-      operationId: createDocuments
-      responses:
-        201:
-          description: Null response
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /documents/{docId}:
-    get:
-      summary: Get document info
-      operationId: showDocumentById
-      parameters:
-        - name: docId
-          in: path
-          required: true
-          description: The id of the document to retrieve
-          schema:
-            type: string
-      responses:
-        200:
-          description: Expected response to a valid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Documents'
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-components:
-  schemas:
-    Project:
-      required:
-        - id
-        - name
-      properties:
-        id:
-          type: integer
-          format: int64
-        name:
-          type: string
-        description:
-          type: string
-    Projects:
-      type: array
-      items:
-        $ref: '#/components/schemas/Project'
-    Document:
-      required:
-        - id
-        - title
-      properties:
-        id:
-          type: integer
-          format: int64
-        title:
-          type: string
+      tags: [Cards]
+      summary: Create card
+      description: |
+        Create a new card for the authenticated user. A default
+        `content/header` block is seeded automatically. `handle` is not set on
+        creation — use `POST /v1/handles` to assign one.
+
+        With master key, the body **must** include `user_id` to set the owner.
+      requestBody:
+        required: true
         content:
-          type: string
-    Documents:
-      type: array
-      items:
-        $ref: '#/components/schemas/Document'
+          application/json:
+            schema: { $ref: '#/components/schemas/CardCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CardListItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/cards/{identifier}:
+    parameters:
+      - $ref: '#/components/parameters/CardIdentifier'
+    get:
+      tags: [Cards]
+      summary: Render card content
+      description: |
+        Render a card's full content by card ID or handle. Drafts
+        (`is_visible: false`) are included — visibility is not enforced here;
+        the public renderer is responsible for that check. Soft-deleted cards
+        are excluded via `deleted_at`.
+
+        Response is `Cache-Control: private, no-cache, no-store,
+        must-revalidate`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CardRender' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    patch:
+      tags: [Cards]
+      summary: Update card
+      description: Update card-level properties. At least one field required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardPatchRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CardListItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Cards]
+      summary: Delete card
+      description: |
+        Soft-delete a card and cascade in order: `card_blocks`, `handles`,
+        `smart_links`, `cards`. Historical records (`form_submissions`,
+        `contacts`, `contact_fields`, `analytics_events`) are preserved.
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/cards/{identifier}/vcard:
+    parameters:
+      - $ref: '#/components/parameters/CardIdentifier'
+    get:
+      tags: [vCard]
+      summary: Export card as vCard 4.0
+      description: |
+        Export a card as a vCard 4.0 file (`.vcf`) built from the card's
+        active blocks. Drafts are included for the authenticated owner.
+        Lines are CRLF-terminated and folded at 75 octets per RFC 6350.
+
+        Auth: Bearer JWT or master key.
+      security:
+        - bearerAuth: []
+        - masterKey: []
+      responses:
+        '200':
+          description: vCard payload
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="gatlyn.vcf"
+            Cache-Control:
+              schema:
+                type: string
+                example: private, no-cache, no-store, must-revalidate
+          content:
+            text/vcard:
+              schema:
+                type: string
+                format: binary
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/cards/{id}/blocks:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    post:
+      tags: [Card blocks]
+      summary: Create root block
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlockCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Block' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/cards/{id}/blocks/{block_id}:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+      - name: block_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [Card blocks]
+      summary: Replace block (atomic tree replacement)
+      description: |
+        Atomically replace a block and its child blocks. Only fields present in
+        the body are changed on the root. If `sub_blocks` is included, children
+        are upserted by key and any existing children whose keys are absent are
+        soft-deleted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlockUpdateRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Block' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Card blocks]
+      summary: Delete root block
+      description: Soft-delete a root block and cascade to its children.
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/handles:
+    get:
+      tags: [Handles]
+      summary: Get handle for a card
+      parameters:
+        - name: card_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HandleResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Handles]
+      summary: Claim handle for a card
+      description: |
+        Claim a handle for a card. Replaces any existing handle on the card
+        (previous rows are soft-deleted before the new one is inserted).
+        Idempotent — returns `201` if the card already owns that handle.
+
+        Validation: 3–40 chars, pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$`,
+        normalized (trim + lowercase). Reserved and forbidden handles rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HandleClaimRequest' }
+      responses:
+        '201':
+          description: Created (or already owned)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HandleResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Handle already claimed by a different card.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Handles]
+      summary: Release handle
+      description: |
+        Release a card's handle. Card remains accessible by UUID. `card_id`
+        accepted as a query parameter or JSON body.
+      parameters:
+        - name: card_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_id: { type: string, format: uuid }
+              required: [card_id]
+      responses:
+        '204': { description: Released }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/handles/availability:
+    get:
+      tags: [Handles]
+      summary: Check handle availability
+      description: |
+        Always returns `200` regardless of availability. Use the `available`
+        boolean to determine the result. This prevents enumeration of taken
+        handles via HTTP status codes.
+      parameters:
+        - name: handle
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: boolean }
+                required: [available]
+
+  /v1/profile:
+    get:
+      tags: [Profile]
+      summary: Get authenticated user's profile
+      description: |
+        JWT-only. With master key, the `?user_id=<uuid>` query param is
+        required.
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          description: Required when calling with master key.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    patch:
+      tags: [Profile]
+      summary: Update profile
+      description: |
+        Partially update the authenticated user's profile. JWT-only by default.
+        With master key, the body must include `user_id`. Empty body `{}` is a
+        no-op.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileUpdateRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /v1/device-tokens:
+    post:
+      tags: [Device tokens]
+      summary: Register or refresh APNs device token
+      description: |
+        JWT-only — master key not accepted. Upserts on `(user_id, token)`.
+        Returns `201` on create, `200` on update (reactivation).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceTokenRequest' }
+      responses:
+        '200':
+          description: Updated (token already existed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceTokenResponse' }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceTokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/device-tokens/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        description: APNs device token. URL-encode reserved characters.
+        schema: { type: string }
+    delete:
+      tags: [Device tokens]
+      summary: Deactivate device token
+      description: "Sets `is_active: false` — does not delete the row. JWT-only."
+      security:
+        - bearerAuth: []
+      responses:
+        '204': { description: Deactivated }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/import/linktree:
+    post:
+      tags: [Import]
+      summary: Fetch & extract a Linktree page
+      description: |
+        Fetch a Linktree page server-side and extract its `__NEXT_DATA__`
+        JSON payload. Must be a `linktr.ee` URL. Mapping to Titlecard's
+        `card_blocks` is the client's responsibility.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                url: { type: string, format: uri, example: 'https://linktr.ee/username' }
+              required: [url]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+                  data: { type: object, additionalProperties: true }
+                required: [url, data]
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: '`__NEXT_DATA__` script tag not found on the page.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /v1/smart-links:
+    post:
+      tags: [Smart links]
+      summary: Create smart link
+      description: Send either `card_id` (card link) or `url` (external link), not both.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  properties:
+                    card_id: { type: string, format: uuid }
+                  required: [card_id]
+                - type: object
+                  additionalProperties: false
+                  properties:
+                    url: { type: string, format: uri }
+                  required: [url]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SmartLinkResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/smart-links/code:
+    post:
+      tags: [Smart links]
+      summary: Generate unique smart-link code
+      description: Pre-generate a unique 8-char code without creating a record.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, minLength: 8, maxLength: 8, example: WMJRMQ74 }
+                required: [code]
+
+  /v1/smart-links/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: { type: string, minLength: 8, maxLength: 8 }
+    get:
+      tags: [Smart links]
+      summary: Resolve smart-link code
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+                required: [url]
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Smart links]
+      summary: Update smart link
+      description: |
+        JWT-only — master key not accepted for this operation. Send either
+        `url` or `card_id`, not both. At least one of `is_enabled`, `url`, or
+        `card_id` is required.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SmartLinkPatchRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SmartLinkResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Smart links]
+      summary: Soft-delete smart link
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/submissions:
+    get:
+      tags: [Submissions]
+      summary: List form submissions
+      description: |
+        List submissions for a card. Supports cursor and offset pagination
+        (do not mix). When `status` is omitted, returns `inbox` and `spam` rows
+        only.
+      parameters:
+        - name: card_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [inbox, spam, deleted]
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: private, no-cache, no-store, must-revalidate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmissionsList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [Submissions]
+      summary: Public form submission
+      description: |
+        Public form submission for a visible card. **No authentication
+        required.** Rate limit: 20 req / 15 min per client IP. Honeypot fields
+        (`honeypot`, `_gotcha`) cause a `200 { "ok": true }` response with no
+        stored row.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSubmissionRequest' }
+      responses:
+        '200':
+          description: Honeypot triggered — appears successful, nothing stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                required: [ok]
+        '201':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                  id: { type: string, format: uuid }
+                  created_at: { type: string, format: date-time }
+                required: [ok, id, created_at]
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/submissions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Submissions]
+      summary: Update submission status
+      description: |
+        Move a submission between status folders. Allowed transitions:
+        `inbox` ↔ `spam`, `inbox`/`spam` → `deleted`, `deleted` → `inbox`
+        (clears `deleted_at`). `deleted` → `deleted` is a no-op (`200`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                status:
+                  type: string
+                  enum: [inbox, spam, deleted]
+              required: [status]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Submission' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Submissions]
+      summary: Soft-delete submission
+      description: |
+        Sets `status = 'deleted'` and `deleted_at = now()`. Visible under
+        `?status=deleted` for 30 days before permanent removal.
+      responses:
+        '204': { description: Deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/qr:
+    post:
+      tags: [QR codes]
+      summary: Generate custom QR code
+      description: |
+        Generate a fully custom QR code encoding a URL. Returns SVG or PNG
+        directly (no JSON wrapper). Error correction is fixed at level **H**
+        (30% recovery). Response is `Cache-Control: public, max-age=86400` —
+        output is deterministic for a given body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QrRequest' }
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=86400
+          content:
+            image/svg+xml:
+              schema: { type: string }
+            image/png:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase session token. Required for user-context operations.
+    masterKey:
+      type: apiKey
+      in: header
+      name: X-Titlecard-Key
+      description: |
+        Server-to-server root credential. Bypasses ownership checks on
+        supported endpoints. Never expose in client-side code or logs.
+
+  parameters:
+    CardIdentifier:
+      name: identifier
+      in: path
+      required: true
+      description: Card UUID or `@handle`.
+      schema:
+        type: string
+        example: '@gatlyn'
+    CardId:
+      name: id
+      in: path
+      required: true
+      description: Card UUID or `@handle`.
+      schema:
+        type: string
+        example: '@gatlyn'
+
+  responses:
+    BadRequest:
+      description: Bad request — invalid input, unknown fields, or failed validation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated but not permitted (e.g. wrong card owner).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Rate limit exceeded.
+      headers:
+        X-RateLimit-Limit:
+          schema: { type: integer }
+        X-RateLimit-Remaining:
+          schema: { type: integer }
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServerError:
+      description: Server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
     Error:
-      required:
-        - code
-        - message
+      type: object
       properties:
-        code:
-          type: integer
-          format: int32
-        message:
+        error: { type: string }
+      required: [error]
+
+    # ---- Cards ----
+    CardListItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        handle:
+          type: [string, 'null']
+          example: gatlyn
+        is_profile: { type: boolean }
+        is_visible: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, is_profile, is_visible, created_at, updated_at]
+
+    CardCreateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        is_profile: { type: boolean, default: false }
+        is_visible: { type: boolean, default: false }
+        user_id:
           type: string
+          format: uuid
+          description: Master-key only. Sets the card owner. Rejected for JWT clients.
+
+    CardPatchRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        is_profile: { type: boolean }
+        is_visible: { type: boolean }
+
+    CardRender:
+      type: object
+      properties:
+        v: { type: integer, const: 1 }
+        card:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            handle: { type: [string, 'null'] }
+            is_profile: { type: boolean }
+        theme:
+          type: object
+          additionalProperties: true
+          properties:
+            accent: { type: string, example: '#000000' }
+        blocks:
+          type: array
+          items: { $ref: '#/components/schemas/Block' }
+      required: [v, card, theme, blocks]
+
+    # ---- Card blocks ----
+    SubBlock:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        value: { type: string }
+        is_visible: { type: boolean }
+
+    SubBlockInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        value: { type: string }
+        is_visible: { type: boolean }
+
+    Block:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        namespace: { type: string, example: content }
+        key:
+          type: string
+          example: link
+          description: 'e.g. `header`, `link`, `action`, `form`, `sms`'
+        value: { type: string }
+        is_visible: { type: boolean }
+        cell:
+          type: [string, 'null']
+          pattern: '^[A-Za-z]+\d+$'
+          example: A1
+        sub_blocks:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/SubBlock' }
+      required: [id, namespace, key, value, is_visible]
+
+    BlockCreateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        namespace: { type: string }
+        key: { type: string }
+        value: { type: string, default: '' }
+        is_visible: { type: boolean, default: true }
+        cell:
+          type: [string, 'null']
+          pattern: '^[A-Za-z]+\d+$'
+        sub_blocks:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/SubBlockInput' }
+      required: [namespace, key]
+
+    BlockUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        value: { type: string }
+        is_visible: { type: boolean }
+        cell:
+          type: [string, 'null']
+          pattern: '^[A-Za-z]+\d+$'
+        sub_blocks:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/SubBlockInput' }
+
+    # ---- Handles ----
+    HandleResponse:
+      type: object
+      properties:
+        card_id: { type: string, format: uuid }
+        handle:
+          type: [string, 'null']
+          minLength: 3
+          maxLength: 40
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+      required: [card_id, handle]
+
+    HandleClaimRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        card_id: { type: string, format: uuid }
+        handle:
+          type: string
+          minLength: 3
+          maxLength: 40
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+      required: [card_id, handle]
+
+    # ---- Profile ----
+    ProfileResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        plan_tier:
+          type: string
+          example: free
+        role:
+          type: string
+          example: individual
+        onboarding_completed_at:
+          type: [string, 'null']
+          format: date-time
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, plan_tier, role, onboarding_completed_at, created_at, updated_at]
+
+    ProfileUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        onboarding_completed_at:
+          type: [string, 'null']
+          format: date-time
+        user_id:
+          type: string
+          format: uuid
+          description: Master-key only. Required when calling with master key.
+
+    # ---- Device tokens ----
+    DeviceTokenRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        token: { type: string }
+        environment:
+          type: string
+          enum: [production, sandbox]
+          default: production
+      required: [token]
+
+    DeviceTokenResponse:
+      type: object
+      properties:
+        token: { type: string }
+        environment:
+          type: string
+          enum: [production, sandbox]
+        platform:
+          type: string
+          enum: [ios]
+        is_active: { type: boolean }
+      required: [token, environment, platform, is_active]
+
+    # ---- Smart links ----
+    SmartLinkResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, minLength: 8, maxLength: 8 }
+        card_id: { type: [string, 'null'], format: uuid }
+        link_type:
+          type: string
+          enum: [card, external]
+        external_link: { type: [string, 'null'], format: uri }
+        is_enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, code, link_type, is_enabled, created_at, updated_at]
+
+    SmartLinkPatchRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        is_enabled: { type: boolean }
+        url: { type: string, format: uri }
+        card_id: { type: string, format: uuid }
+      not:
+        required: [url, card_id]
+
+    # ---- Submissions ----
+    SubmissionField:
+      type: object
+      properties:
+        type:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,31}$'
+          default: text
+        label: { type: string, maxLength: 200 }
+        value: { type: string, maxLength: 10000 }
+        display_value: { type: string, maxLength: 10000 }
+      required: [label, value]
+
+    Submission:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        card_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [inbox, spam, deleted]
+        deleted_at: { type: [string, 'null'], format: date-time }
+        spam_score: { type: number }
+        spam_details: { type: [object, 'null'], additionalProperties: true }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/SubmissionField' }
+      required: [id, card_id, created_at, status, fields]
+
+    SubmissionsList:
+      type: object
+      properties:
+        submissions:
+          type: array
+          items: { $ref: '#/components/schemas/Submission' }
+        has_more: { type: boolean }
+        next_cursor:
+          type: [string, 'null']
+          description: Present only when using cursor pagination.
+        total:
+          type: integer
+          description: Present only when using offset pagination.
+      required: [submissions, has_more]
+
+    CreateSubmissionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        card_id: { type: string, format: uuid }
+        block_id:
+          type: string
+          format: uuid
+          description: Required when the card has more than one visible form.
+        fields:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items: { $ref: '#/components/schemas/SubmissionField' }
+        honeypot: { type: string, description: Anti-bot. If non-empty, request appears successful but nothing is stored. }
+        _gotcha: { type: string, description: Alternate honeypot field. Same behavior as `honeypot`. }
+      required: [card_id, fields]
+
+    # ---- QR codes ----
+    QrFill:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [solid, gradient]
+          default: solid
+        color:
+          type: string
+          pattern: '^[0-9a-fA-F]{6}$'
+          example: '000000'
+        gradient: { $ref: '#/components/schemas/QrGradient' }
+
+    QrGradient:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [linear, radial]
+        stops:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              color:
+                type: string
+                pattern: '^[0-9a-fA-F]{6}$'
+              position:
+                type: number
+                minimum: 0
+                maximum: 1
+            required: [color, position]
+        angle:
+          type: integer
+          default: 0
+          description: Degrees. Only applies to `linear`.
+      required: [type, stops]
+
+    QrFinderLayer:
+      type: object
+      additionalProperties: false
+      properties:
+        shape:
+          type: string
+          enum: [square, circle, rounded, extra-rounded, leaf, diamond]
+          default: square
+        fill: { $ref: '#/components/schemas/QrFill' }
+
+    QrRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        url: { type: string, format: uri }
+        format:
+          type: string
+          enum: [svg, png]
+          default: svg
+        size:
+          type: integer
+          minimum: 100
+          maximum: 2000
+          default: 300
+        background:
+          type: object
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [solid, gradient]
+              default: solid
+            color:
+              type: string
+              pattern: '^[0-9a-fA-F]{6}$'
+              default: 'ffffff'
+            gradient: { $ref: '#/components/schemas/QrGradient' }
+        modules:
+          type: object
+          additionalProperties: false
+          properties:
+            shape:
+              type: string
+              enum: [square, circle, rounded, diamond, star, cross, random]
+              default: square
+            size:
+              type: number
+              default: 1.0
+            fill: { $ref: '#/components/schemas/QrFill' }
+        finder:
+          type: object
+          additionalProperties: false
+          properties:
+            outer: { $ref: '#/components/schemas/QrFinderLayer' }
+            inner: { $ref: '#/components/schemas/QrFinderLayer' }
+            overrides:
+              type: [object, 'null']
+              additionalProperties: false
+              properties:
+                top_left:
+                  type: object
+                  properties:
+                    outer: { $ref: '#/components/schemas/QrFinderLayer' }
+                    inner: { $ref: '#/components/schemas/QrFinderLayer' }
+                top_right:
+                  type: object
+                  properties:
+                    outer: { $ref: '#/components/schemas/QrFinderLayer' }
+                    inner: { $ref: '#/components/schemas/QrFinderLayer' }
+                bottom_left:
+                  type: object
+                  properties:
+                    outer: { $ref: '#/components/schemas/QrFinderLayer' }
+                    inner: { $ref: '#/components/schemas/QrFinderLayer' }
+        logo:
+          type: [object, 'null']
+          additionalProperties: false
+          properties:
+            url: { type: string, format: uri }
+            size:
+              type: number
+              minimum: 0.1
+              maximum: 0.4
+              default: 0.25
+            margin:
+              type: integer
+              default: 6
+            background:
+              type: [string, 'null']
+              pattern: '^[0-9a-fA-F]{6}$'
+            border_radius:
+              type: integer
+              default: 0
+          required: [url]
+      required: [url]
