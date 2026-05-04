@@ -1,5 +1,5 @@
 {
-  "name": "Starter Kit",
+  "name": "Titlecard",
   "colors": {
     "light": {
       "brand": "#F97316"
@@ -150,5 +150,7 @@
         ]
       }
     ]
-  }
+  },
+  "title": "Titlecard",
+  "template": "atlas"
 }
