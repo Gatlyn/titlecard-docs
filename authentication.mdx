@@ -1,57 +1,111 @@
 ---
-title: Authentication (Sample)
-description: Sample guidance for authentication and OpenAPI usage.
+title: Authentication
+description: How to authenticate against the Titlecard API.
 ---
 
 ## Overview
 
-This is sample content. Replace tokens, URLs, headers, and flows with your real authentication requirements.
+The Titlecard API uses OpenAPI to describe endpoints, parameters, and responses. The reference is generated from `openapi.yml`, so keep that file up to date as the API evolves.
 
-<Callout kind="info">
+The base URL is `https://api.title.cards`. All authenticated endpoints accept one of two credentials, described below.
 
-This site ships with placeholder content for authentication. Update this page and `openapi.yaml` to match your real API before sharing with users.
-
+<Callout kind="warning" collapsed="false">
+  The master key (`X_TITLECARD_KEY`) is a server-to-server root secret. Never expose it in client-side code, mobile app bundles, or logs — it can read and modify any user's cards, handles, smart links, and profiles on supported endpoints.
 </Callout>
 
-This API uses OpenAPI to describe endpoints, parameters, and responses. The reference is generated from `openapi.yaml`, so keep that file up to date as your API evolves.
+The Titlecard API supports two authentication methods. Use whichever matches the calling context: Bearer JWT for end-user actions, master key for trusted server-to-server work.
 
 ## Authentication
 
-Use a bearer token in the `Authorization` header for authenticated requests. Replace the base URL and token with values for your own API.
+### Bearer JWT (user context)
+
+Used for normal user-context operations from the iOS app and web client. The token is a Supabase session token issued at sign-in.
 
 ```bash
-curl https://api.example.com/v1/example \
-  -H "Authorization: Bearer YOUR_TOKEN"
+curl https://api.title.cards/v1/cards \
+  -H "Authorization: Bearer YOUR_JWT"
 ```
 
-<ParamField header="Authorization" param-type="string" required="true">
-  `Bearer YOUR_TOKEN`
+<ParamField header="Authorization" param-type="string" required="true" deprecated="false">
+  `Bearer <supabase-session-jwt>`
 </ParamField>
+
+### Master key (server-to-server)
+
+Used for trusted backend services that need to operate across users. Matched server-side against the `X_TITLECARD_KEY` environment variable. Bypasses ownership checks on supported endpoints.
+
+```bash
+curl https://api.title.cards/v1/cards \
+  -H "X-Titlecard-Key: YOUR_MASTER_KEY"
+```
+
+<ParamField header="X-Titlecard-Key" param-type="string" required="true" deprecated="false">
+  Server-to-server root credential. Bypasses ownership checks on supported endpoints.
+</ParamField>
+
+When calling with the master key, some endpoints require an explicit `user_id` so the API knows which user to act on behalf of:
+
+- `POST /v1/cards` — `user_id` in the JSON body.
+- `GET /v1/profile` — `?user_id=<uuid>` in the query string.
+- `PATCH /v1/profile` — `user_id` in the JSON body.
+
+JWT clients that send `user_id` are rejected with a `400` (it's flagged as an unknown field).
+
+### JWT-only endpoints
+
+A few endpoints reject the master key entirely and require a Bearer JWT:
+
+- `GET /v1/profile`, `PATCH /v1/profile` (master key permitted only with `user_id`, otherwise rejected).
+- `POST /v1/device-tokens`, `DELETE /v1/device-tokens/{token}`.
+- `PATCH /v1/smart-links/{code}` — note that `GET` and `DELETE` on the same path do accept the master key. This asymmetry is intentional.
+
+### Public endpoint
+
+`POST /v1/submissions` is the only endpoint that accepts unauthenticated requests. It's the public form submission endpoint used by published cards and is rate-limited at 20 requests per 15 minutes per client IP.
+
+## Rate limits
+
+Most authenticated endpoints are limited to 60 requests per minute per client IP. `POST /v1/submissions` is limited to 20 requests per 15 minutes. When a client exceeds the limit, the API returns `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After` response headers — clients should respect `Retry-After` and back off.
 
 ## Keep OpenAPI in sync
 
-Define your authentication and base settings in `openapi.yaml` so the API Reference stays accurate and consistent.
+Authentication and base settings are defined in `openapi.yml` so the API Reference stays accurate. At a minimum, the spec should:
 
-At a minimum, you should:
+- Define both `bearerAuth` (HTTP bearer, JWT format) and `masterKey` (API key in `X-Titlecard-Key` header) under `components.securitySchemes`.
+- Apply those schemes globally and override per-operation for JWT-only and public endpoints.
+- Set `https://api.title.cards` as the base URL.
 
-- Define one or more security schemes that describe how clients authenticate (for example, bearer token, API key in a header, or other scheme).
-- Reference those security schemes on operations that require authentication so they are clearly marked as secured.
-- Set the correct base URL and any required global headers (for example, versioning or tenant headers) so example requests are copy-pasteable.
-
-When your real authentication flow changes (for example, new header names, token formats, or additional requirements), update `openapi.yaml`. The generated API Reference will then reflect your current auth model without needing to edit each endpoint page by hand.
+When auth changes (new header names, scope semantics, or additional schemes), update `openapi.yml`. The generated reference will then reflect the current model without per-endpoint edits.
 
 ## Using the API reference
 
-Use the API Reference to explore endpoints, required parameters, and example responses. When you change authentication headers or base URLs, update `openapi.yaml` so the generated reference matches what your clients should use.
+Use the API Reference to explore endpoints, required parameters, and example responses. When auth headers or base URLs change, update `openapi.yml` so the generated reference matches what clients should send.
 
 ## Common mistakes
 
 <Expandable title="Why am I getting a 401?" default-open="false">
+  Verify that:
+  - The token is valid and not expired.
+  - The token is sent in the `Authorization` header (for JWT) or `X-Titlecard-Key` header (for master key) — not both.
+  - The `Authorization` header value includes the `Bearer` prefix and a space before the token.
+  - You're not calling a JWT-only endpoint (profile, device tokens, `PATCH /v1/smart-links/{code}`) with the master key.
+</Expandable>
 
-Verify that:
+<Expandable title="Why am I getting a 403?" default-open="false">
+  `403` means authenticated but not permitted. Common causes:
+  - The card or resource exists but is owned by a different user. The API returns `403` rather than `404` here intentionally — it avoids leaking the existence of resources owned by others.
+  - You're using a JWT and trying to operate on another user's card. Switch to the master key for cross-user operations on supported endpoints.
+</Expandable>
 
-- The token is valid and not expired.
-- The token is sent in the `Authorization` header.
-- The header value includes the `Bearer` prefix and a space before the token.
+<Expandable title="Why is my master-key call failing on profile or card creation?" default-open="false">
+  Master-key calls to `/v1/profile` and `POST /v1/cards` require an explicit `user_id`:
+  - `POST /v1/cards` — include `user_id` in the JSON body.
+  - `GET /v1/profile` — include `?user_id=<uuid>` in the query string.
+  - `PATCH /v1/profile` — include `user_id` in the JSON body.
 
+  JWT clients are rejected if they send `user_id` (it's flagged as an unknown field).
+</Expandable>
+
+<Expandable title="Why am I getting a 429?" default-open="false">
+  Rate limit exceeded. Check the `Retry-After` response header and back off accordingly. Most endpoints allow 60 requests per minute per client IP. `POST /v1/submissions` allows 20 requests per 15 minutes per client IP.
 </Expandable>
